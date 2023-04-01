@@ -144,7 +144,7 @@ void i_format(unsigned int instruction, int opcode) {
 	rd = (instruction << 20) >> 27;
 	funct3 = (instruction << 17) >> 29;
 	rs1 = (instruction << 12) >> 27;
-	immediate = instruction >> 20;
+	immediate = (signed) instruction >> 20;
 	
 	if (opcode == 3) {
 		if (funct3 == 0) instruction_name = "lb";
@@ -275,8 +275,8 @@ void store_format(unsigned int instruction) {
 	rs2 = (instruction << 7) >> 27;
 
 	int imm11_5 = instruction >> 20;
-	int imm4_0 = instruction >> 7;
-	immediate = imm11_5 | imm4_0;
+	int imm4_0 = instruction << 13;
+	immediate = (signed) (imm11_5 | (1 & imm4_0)) >> 20;
 
 	if (funct3 == 0) instruction_name = "sb";
 	else if (funct3 == 1) instruction_name = "sh";
