@@ -6,8 +6,9 @@ enum registers { x0 = 0, x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11, x12, x13,
 void register_print(int register_num);
 void r_format(unsigned int instruction, int opcode);
 void i_format(unsigned int instruction, int opcode);
+void i_shift_format(unsigned int instruction, int funct3);
 void sb_format(unsigned int instruction);
-void u_format(unsigned int instruction, int opcode);
+void u_format(signed int instruction, int opcode);
 void j_format(unsigned int instruction);
 void store_format(unsigned int instruction);
 
@@ -15,19 +16,25 @@ int main(int argc, char *argv[]) {
 	
 	FILE *fs = fopen(argv[1], "rb");
 	
-	int buffer;
+	unsigned int buffer;
 	int instruction_number = 0;
-	unsigned int opcode;
+	int opcode;
+	int funct3;
 	
 	while (fread(&buffer, 4, 1, fs) == 1) {
 		opcode = (buffer << 25) >> 25;
-		
+		funct3 = (buffer << 17) >> 29;
+
 		printf("inst %d: %.8x ", instruction_number++, buffer);
 		if (opcode == 51) {
 			r_format(buffer, opcode);
 		}
-		else if (opcode == 3 || opcode == 19 || opcode == 103) {
+		else if (opcode == 3 || opcode == 103) {
 			i_format(buffer, opcode);
+		}
+		else if (opcode == 19) {
+			if (funct3 == 1 || funct3 == 5) i_shift_format(buffer, funct3);
+			else i_format(buffer, opcode);
 		}
 		else if (opcode == 99) {
 			sb_format(buffer);
@@ -43,6 +50,9 @@ int main(int argc, char *argv[]) {
 		}
 		else if (opcode == 35) {
 			store_format(buffer);		
+		}
+		else {
+			printf("unknown instruction\n");
 		}
 	}
 
@@ -101,8 +111,6 @@ void r_format(unsigned int instruction, int opcode) {
 	funct7 = instruction >> 25;
 	
 	if (opcode == 19) {
-		int shamt = rs2;
-
 		if (funct3 == 1) instruction_name = "slli";
 	        else if (funct3 == 5 && funct7 == 0) instruction_name = "srli";
 		else if (funct3 == 5 && funct7 == 32) instruction_name = "srai";
@@ -121,7 +129,8 @@ void r_format(unsigned int instruction, int opcode) {
 		if (funct3 == 0) instruction_name = "sub";
 		else if (funct3 == 5) instruction_name = "sra";
 	}
-	if (instruction_name == NULL) printf("unknown instruction");
+
+	if (instruction_name == NULL) printf("unknown instruction\n");
 	
 	printf("%s ", instruction_name);
 	register_print(rd);
@@ -166,10 +175,10 @@ void i_format(unsigned int instruction, int opcode) {
 	}	
 
 	if (instruction_name == NULL) {
-		printf("unknown instruction");
+		printf("unknown instruction\n");
 	}
 
-	if (opcode == 3) {
+	if (opcode == 3 || opcode == 103) {
 		printf("%s ", instruction_name);
 		register_print(rd);
 		printf(", %d(", immediate);
@@ -183,6 +192,33 @@ void i_format(unsigned int instruction, int opcode) {
 	printf(", ");
 	register_print(rs1);
 	printf(", %d\n", immediate);
+}
+
+void i_shift_format(unsigned int instruction, int funct3) {
+	
+	int rd;
+	int rs1;
+	int shamt;
+	int funct7;
+	
+	char *instruction_name = NULL;
+	
+	rd = (instruction << 20) >> 27;
+	rs1 = (instruction << 12) >> 27;
+	shamt = (instruction << 7) >> 27;
+	funct7 = instruction >> 25;
+	
+	if (funct3 == 1) instruction_name = "slli";
+	else if (funct3 == 5 && funct7 == 0) instruction_name = "srli";
+	else if (funct3 == 5 && funct7 == 32) instruction_name = "srai";
+
+	if (instruction_name == NULL) printf("unknown instruction\n");
+	
+	printf("%s ", instruction_name);
+	register_print(rd);
+	printf(", ");
+	register_print(rs1);
+	printf(", %d\n", shamt);
 }
 
 void sb_format(unsigned int instruction) {
@@ -201,9 +237,9 @@ void sb_format(unsigned int instruction) {
 	int imm12 = (instruction >> 31) << 12;
 	int imm11 = ((instruction << 24) >> 31) << 11;
 	int imm10_5 = ((instruction << 1) >> 26) << 5;
-	int imm4_1 = ((instruction << 13) >> 28) << 1;
-	immediate = imm12 | imm11 | imm10_5 | imm4_1;
-
+	int imm4_1 = ((instruction << 20) >> 28) << 1;
+	immediate = (imm12 | imm11 | imm10_5 | imm4_1);
+	immediate = (immediate << 19) >> 19;
 
 	if (funct3 == 0) instruction_name = "beq";
 	else if (funct3 == 1) instruction_name = "bne";
@@ -213,7 +249,7 @@ void sb_format(unsigned int instruction) {
 	else if (funct3 == 7) instruction_name = "bgeu";
 
 	if (instruction_name == NULL) {
-		printf("unknown instruction");
+		printf("unknown instruction\n");
 	}
 	
 	printf("%s ", instruction_name);
@@ -223,17 +259,17 @@ void sb_format(unsigned int instruction) {
 	printf(", %d\n", immediate);
 }
 
-void u_format(unsigned int instruction, int opcode) {
+void u_format(signed int instruction, int opcode) {
 
         int rd = (instruction << 20) >> 27;
-    	int immediate = instruction >> 12;
+    	int immediate = (instruction >> 12) << 12;
 
     	char *instruction_name = NULL;
 
         if (opcode == 55) instruction_name = "lui";
         else if (opcode == 23) instruction_name = "auipc";
 
-        if (instruction_name == NULL) printf("unknown instruction");
+        if (instruction_name == NULL) printf("unknown instruction\n");
 	
 	printf("%s ", instruction_name);
 	register_print(rd);
@@ -247,11 +283,12 @@ void j_format(unsigned int instruction) {
 
 	char *instruction_name = NULL;
 
-	int imm20 = instruction >> 11;
-	int imm10_1 = (instruction << 1) >> 21;
-	int imm11 = (instruction << 11) >> 20;
-	int imm19_12 = (instruction << 12) >> 12;	
+	int imm20 = (instruction >> 31) << 20;
+	int imm10_1 = ((instruction << 1) >> 22) << 1;
+	int imm11 = ((instruction << 11) >> 31) << 11;
+	int imm19_12 = ((instruction << 12) >> 24) << 12;	
 	immediate = imm20 | imm19_12 | imm11 | imm10_1;
+	immediate = (immediate << 11) >> 11;
 
 	instruction_name = "jal";
 	
@@ -274,16 +311,17 @@ void store_format(unsigned int instruction) {
 	rs1 = (instruction << 12) >> 27;
 	rs2 = (instruction << 7) >> 27;
 
-	int imm11_5 = instruction >> 20;
-	int imm4_0 = instruction << 13;
-	immediate = (signed) (imm11_5 | (1 & imm4_0)) >> 20;
+	int imm11_5 = (instruction >> 25) << 5;
+	int imm4_0 = (instruction << 20) >> 27;
+	immediate = (imm11_5 | imm4_0);
+	immediate = (immediate << 20) >> 20;
 
 	if (funct3 == 0) instruction_name = "sb";
 	else if (funct3 == 1) instruction_name = "sh";
 	else if (funct3 == 2) instruction_name = "sw";
 
 	if (instruction_name == NULL) {
-		printf("unknown instruction");
+		printf("unknown instruction\n");
 	}
 	
 	printf("%s ", instruction_name);
