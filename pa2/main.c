@@ -1,22 +1,88 @@
 #include <stdio.h>
 #include <stdlib.h>
+#define START_INST_MEMORY 0x10000000
+
+typedef struct _Node {
+	int addr;
+	int data;
+	struct _Node *next;
+} Node;
+
+typedef struct {
+	Node *head;
+} LinkedList;
+
+void list_init(LinkedList *plist) {
+	plist->head = (Node *) malloc(sizeof(Node));
+	plist->head->addr = 0;
+	plist->head->data = 0;
+	plist->head->next = NULL;
+}
+
+void list_insert(LinkedList *plist, int addr) {
+	Node *cur = plist->head;
+
+	while (cur->next != NULL) cur = cur->next;
+
+	cur->next = (Node *) malloc(sizeof(Node));
+	cur->next->addr = addr;
+	cur->next->data = 0;
+	cur->next->next = NULL;
+}
+
+void list_store(LinkedList *plist, int addr, int data) {
+	Node *cur = plist->head;
+
+	while (cur->next != NULL) {
+		cur = cur->next;
+		if (cur->addr == addr) {
+			break;
+		}
+	}
+	cur->data = data;
+}
+
+void list_free(LinkedList *plist) {
+	Node *cur = plist->head;
+	Node *tmp = NULL;
+	while (cur->next != NULL) {
+		tmp = cur;
+		cur = cur->next;
+		free(tmp);
+	}
+	free(cur);
+	free(plist);
+}
+
+int list_load(LinkedList *plist, int addr) {
+	Node *cur = plist->head;
+	while (cur->next != NULL) {
+		cur = cur->next;
+		if (cur->addr == addr) {
+			return cur->data;
+		}
+	}
+	
+	return 0;	
+}
 
 int registers[32];
-int current_inst_memory = 0x10000000;
+int pc = START_INST_MEMORY; 
 
 void r_format(unsigned int instruction, int opcode);
-void i_format(unsigned int instruction, int opcode);
+void i_format(unsigned int instruction, int opcode, LinkedList *plist);
 void i_shift_format(unsigned int instruction, int funct3);
 void sb_format(unsigned int instruction);
 void u_format(signed int instruction, int opcode);
 void j_format(unsigned int instruction);
-void store_format(unsigned int instruction);
+void store_format(unsigned int instruction, LinkedList *plist);
 void print_final_registers();
 
 int main(int argc, char *argv[]) {
 	
 	FILE *fs_inst = NULL;
 	FILE *fs_data = NULL;	
+	LinkedList *plist = NULL;
 
 	unsigned int buffer;
 	int instruction_number = 0;
@@ -25,8 +91,10 @@ int main(int argc, char *argv[]) {
 	int executed_instruction_num = 0;
 
 	if (argc == 3) {
-		FILE *fs_inst = fopen(argv[1], "rb");
+		fs_inst = fopen(argv[1], "rb");
 		instruction_number = atoi(argv[2]);
+
+		pc = START_INST_MEMORY;
 
 		while (fread(&buffer, 4, 1, fs_inst) == 1) {
 			opcode = (buffer << 25) >> 25;
@@ -36,11 +104,11 @@ int main(int argc, char *argv[]) {
 				r_format(buffer, opcode);
 			}
 			else if (opcode == 3 || opcode == 103) {
-				i_format(buffer, opcode);
+				i_format(buffer, opcode, plist);
 			}
 			else if (opcode == 19) {
 				if (funct3 == 1 || funct3 == 5) i_shift_format(buffer, funct3);
-				else i_format(buffer, opcode);
+				else i_format(buffer, opcode, plist);
 			}
 			else if (opcode == 99) {
 				sb_format(buffer);
@@ -55,31 +123,28 @@ int main(int argc, char *argv[]) {
 				j_format(buffer);
 			}
 			else if (opcode == 35) {
-				store_format(buffer);		
+				store_format(buffer, plist);		
 			}
-			else {
-				printf("unknown instruction\n");
-			}
+			fseek(fs_inst,  pc - START_INST_MEMORY, SEEK_SET);
 			executed_instruction_num++;
 			if (executed_instruction_num == instruction_number) break;
 		}
 		fclose(fs_inst);
 	}
 	else if (argc == 4) {
-		FILE *fs_inst = fopen(argv[1], "rb");
-		FILE *fs_data = fopen(argv[2], "rb");
+		fs_inst = fopen(argv[1], "rb");
+		fs_data = fopen(argv[2], "rb");
 		instruction_number = atoi(argv[3]);
-
-		while (fread(&buffer, 4, 1, fs_inst) == 1) {
-			current_inst_memory += 4;
-		}
-		fclose(fs_inst);
 		
-		current_inst_memory = 0x10000000;
-		/*
-		 * write code about data file
-		 *
-		 * */
+		pc = START_INST_MEMORY;
+
+		plist = (LinkedList *) malloc(sizeof(LinkedList));
+		list_init(plist);
+
+		while (fread(&buffer, 4, 1, fs_data) == 1) {
+			if (buffer == 0xff) break;
+			list_insert(plist, buffer);		
+		}
 
 		fs_inst = fopen(argv[1], "rb");
 		while (fread(&buffer, 4, 1, fs_inst) == 1) {
@@ -90,11 +155,11 @@ int main(int argc, char *argv[]) {
 				r_format(buffer, opcode);
 			}
 			else if (opcode == 3 || opcode == 103) {
-				i_format(buffer, opcode);
+				i_format(buffer, opcode, plist);
 			}
 			else if (opcode == 19) {
 				if (funct3 == 1 || funct3 == 5) i_shift_format(buffer, funct3);
-				else i_format(buffer, opcode);
+				else i_format(buffer, opcode, plist);
 			}
 			else if (opcode == 99) {
 				sb_format(buffer);
@@ -109,30 +174,27 @@ int main(int argc, char *argv[]) {
 				j_format(buffer);
 			}
 			else if (opcode == 35) {
-				store_format(buffer);		
+				store_format(buffer, plist);		
 			}
-			else {
-				printf("unknown instruction\n");
-			}
+			fseek(fs_inst,  pc - START_INST_MEMORY, SEEK_SET);
 			executed_instruction_num++;
 			if (executed_instruction_num == instruction_number) break;
 		}
 		fclose(fs_inst);
 		fclose(fs_data);
 	}
-	
+	list_free(plist);
 	print_final_registers();
 	return 0;
 }
 
+// complete
 void r_format(unsigned int instruction, int opcode) {
 	int rd;
 	int funct3;
 	int rs1;
 	int rs2;
 	int funct7;
-	
-	char *instruction_name = NULL;
 	
 	rd = (instruction << 20) >> 27;
 	funct3 = (instruction << 17) >> 29;
@@ -142,7 +204,7 @@ void r_format(unsigned int instruction, int opcode) {
 	
 	if (opcode == 19) {
 		if (funct3 == 1) registers[rd] = registers[rs1] << registers[rs2];	// slli
-	        else if (funct3 == 5 && funct7 == 0) registers[rd] = (unsigned) registers[rs1] >> registers[rs2]; // srli
+	    else if (funct3 == 5 && funct7 == 0) registers[rd] = ((unsigned) registers[rs1]) >> registers[rs2]; // srli
 		else if (funct3 == 5 && funct7 == 32) registers[rd] = registers[rs1] >> registers[rs2]; // srai
 	}
 	else if (funct7 == 0) {
@@ -159,7 +221,7 @@ void r_format(unsigned int instruction, int opcode) {
 			else registers[rd] = 0;
 		}
 		else if (funct3 == 4) registers[rd] = registers[rs1] ^ registers[rs2];	// xor
-		else if (funct3 == 5) registers[rd] = (unsigned) registers[rs1] >> registers[rs2]; // srl
+		else if (funct3 == 5) registers[rd] = ((unsigned) registers[rs1]) >> registers[rs2]; // srl
 		else if (funct3 == 6) registers[rd] = registers[rs1] | registers[rs2];	// or
 		else if (funct3 == 7) registers[rd] = registers[rs1] & registers[rs2];	//and
 	}
@@ -168,13 +230,13 @@ void r_format(unsigned int instruction, int opcode) {
 		else if (funct3 == 5) registers[rd] = registers[rs1] >> registers[rs2];	// sra
 	}
 
-	if (instruction_name == NULL) printf("unknown instruction\n");
-	
+	pc += 4;
 	// if rd is x0, reset the value to 0
 	if (rd == 0) registers[rd] = 0;
 }
 
-void i_format(unsigned int instruction, int opcode) {
+// complete
+void i_format(unsigned int instruction, int opcode, LinkedList *plist) {
 
 	int rd;
 	int funct3;
@@ -189,11 +251,21 @@ void i_format(unsigned int instruction, int opcode) {
 	immediate = (signed) instruction >> 20;
 	
 	if (opcode == 3) {
-		if (funct3 == 0) instruction_name = "lb";
-		else if (funct3 == 1) instruction_name = "lh";
-		else if (funct3 == 2) instruction_name = "lw";
-		else if (funct3 == 4) instruction_name = "lbu";
-		else if (funct3 == 5) instruction_name = "lhu";
+		int data = list_load(plist, registers[rs1] + immediate);
+		if (funct3 == 0) { // lb
+			data = (data << 24) >> 24;
+		}
+		else if (funct3 == 1) { // lh
+			data = (data << 16) >> 16;
+		}
+		else if (funct3 == 4) { // lbu
+			data = (unsigned) (data << 24) >> 24;
+		}
+		else if (funct3 == 5) { // lhu
+			data = (unsigned) (data << 16) >> 16;
+		}
+		registers[rd] = data; // lw is not handled
+		pc += 4;
 	}
 	else if (opcode == 19) {
 		if (funct3 == 0) { // addi
@@ -204,7 +276,7 @@ void i_format(unsigned int instruction, int opcode) {
 			else registers[rd] = 0;
 		}
 		else if (funct3 == 3) { // sltiu
-			if (registers[rs1] < (unsigned) immediate) registers[rd] = 1;
+			if ((unsigned) registers[rs1] < (unsigned) immediate) registers[rd] = 1;
 			else registers[rd] = 0; 	//// check again
 		}
 		else if (funct3 == 4) { // xori
@@ -213,18 +285,21 @@ void i_format(unsigned int instruction, int opcode) {
 		else if (funct3 == 6) { // ori
 			registers[rd] = registers[rs1] | immediate;
 		}
-		else if (funct3 == 7) { // andi;
+		else if (funct3 == 7) { // andi
 			registers[rd] = registers[rs1] & immediate;
 		}
+		pc += 4;
 	}
-	else if (opcode == 103) {
-		instruction_name = "jalr";
+	else if (opcode == 103) { // jalr
+		registers[rd] = pc + 4;
+		pc = registers[rs1] + immediate;
 	}	
 
 	// if rd is x0, reset the value to 0
 	if (rd == 0) registers[rd] = 0;
 }
 
+// complete
 void i_shift_format(unsigned int instruction, int funct3) {
 	
 	int rd;
@@ -232,23 +307,21 @@ void i_shift_format(unsigned int instruction, int funct3) {
 	int shamt;
 	int funct7;
 	
-	char *instruction_name = NULL;
-	
 	rd = (instruction << 20) >> 27;
 	rs1 = (instruction << 12) >> 27;
 	shamt = (instruction << 7) >> 27;
 	funct7 = instruction >> 25;
 
 	if (funct3 == 1) registers[rd] = registers[rs1] << shamt;	// slli
-	else if (funct3 == 5 && funct7 == 0) registers[rd] = (unsigned) registers[rs1] >> shamt; // srli
+	else if (funct3 == 5 && funct7 == 0) registers[rd] = ((unsigned) registers[rs1]) >> shamt; // srli
 	else if (funct3 == 5 && funct7 == 32) registers[rd] = registers[rs1] >> shamt; // srai
 
-	if (instruction_name == NULL) printf("unknown instruction\n");
-
+	pc += 4;
 	// if rd is x0, reset the value to 0
 	if (rd == 0) registers[rd] = 0;
 }
 
+// complete
 void sb_format(unsigned int instruction) {
 
 	int funct3;
@@ -269,34 +342,50 @@ void sb_format(unsigned int instruction) {
 	immediate = (imm12 | imm11 | imm10_5 | imm4_1);
 	immediate = (immediate << 19) >> 19;
 
-	if (funct3 == 0) instruction_name = "beq";
-	else if (funct3 == 1) instruction_name = "bne";
-	else if (funct3 == 4) instruction_name = "blt";
-	else if (funct3 == 5) instruction_name = "bge";
-	else if (funct3 == 6) instruction_name = "bltu";
-	else if (funct3 == 7) instruction_name = "bgeu";
-
-	if (instruction_name == NULL) {
-		printf("unknown instruction\n");
+	if (funct3 == 0) { // beq
+		if (registers[rs1] == registers[rs2]) pc += immediate;
+		else pc += 4;
+	}
+	else if (funct3 == 1) { // bne
+		if (registers[rs1] != registers[rs2]) pc += immediate;
+		else pc += 4;
+	}
+	else if (funct3 == 4) { // blt
+		if (registers[rs1] < registers[rs2]) pc += immediate;
+		else pc += 4;
+	}
+	else if (funct3 == 5) { // bge
+		if (registers[rs1] >= registers[rs2]) pc += immediate;
+		else pc += 4;
+	}
+	else if (funct3 == 6) { // bltu
+		if ((unsigned) registers[rs1] < (unsigned) registers[rs2]) pc += immediate;
+		else pc += 4;
+	}
+	else if (funct3 == 7) { // bgeu
+		if ((unsigned) registers[rs1] >= (unsigned) registers[rs2]) pc += immediate;
+		else pc += 4;
 	}
 }
 
+// complete
 void u_format(signed int instruction, int opcode) {
 
-        int rd = (instruction << 20) >> 27;
-    	int immediate = (instruction >> 12) << 12;
+    int rd = (instruction << 20) >> 27;
+   	int immediate = (instruction >> 12) << 12;
 
-    	char *instruction_name = NULL;
-
-        if (opcode == 55) instruction_name = "lui";
-        else if (opcode == 23) instruction_name = "auipc";
-
-        if (instruction_name == NULL) printf("unknown instruction\n");
-
+    if (opcode == 55)  { // lui
+		registers[rd] = immediate << 12;
+	}
+    else if (opcode == 23) { // auipc
+		registers[rd] = pc + (immediate << 12);
+	}
+	pc += 4;
 	// if rd is x0, reset the value to 0
 	if (rd == 0) registers[rd] = 0;
 }
 
+// complete
 void j_format(unsigned int instruction) {
 	
 	int rd = (instruction << 20) >> 27;
@@ -311,13 +400,16 @@ void j_format(unsigned int instruction) {
 	immediate = imm20 | imm19_12 | imm11 | imm10_1;
 	immediate = (immediate << 11) >> 11;
 
-	instruction_name = "jal";
+	// jal
+	registers[rd] = pc + 4;
+	pc += immediate;
 
 	//if rd is x0, reset the value to 0
 	if (rd == 0) registers[rd] = 0;
 }
 
-void store_format(unsigned int instruction) {
+// complete
+void store_format(unsigned int instruction, LinkedList *plist) {
 
 	int funct3;
 	int rs1;
@@ -335,13 +427,19 @@ void store_format(unsigned int instruction) {
 	immediate = (imm11_5 | imm4_0);
 	immediate = (immediate << 20) >> 20;
 
-	if (funct3 == 0) instruction_name = "sb";
-	else if (funct3 == 1) instruction_name = "sh";
-	else if (funct3 == 2) instruction_name = "sw";
-
-	if (instruction_name == NULL) {
-		printf("unknown instruction\n");
+	if (funct3 == 0) { // sb
+		int data = registers[rs2] & 0x000000ff;
+		list_store(plist, registers[rs1] + immediate, data);
 	}
+	else if (funct3 == 1) { // sh
+		int data = registers[rs2] & 0x0000ffff;
+		list_store(plist, registers[rs1] + immediate, data);
+	}
+	else if (funct3 == 2) { // sw
+		list_store(plist, registers[rs1] + immediate, registers[rs2]);
+	}
+
+	pc += 4;
 }
 
 void print_final_registers() {
