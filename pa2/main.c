@@ -10,6 +10,7 @@ typedef struct _Node {
 
 typedef struct {
 	Node *head;
+	int len;
 } LinkedList;
 
 void list_init(LinkedList *plist) {
@@ -17,17 +18,20 @@ void list_init(LinkedList *plist) {
 	plist->head->addr = 0;
 	plist->head->data = 0;
 	plist->head->next = NULL;
+	plist->len = 0;
 }
 
-void list_insert(LinkedList *plist, int addr) {
+void list_insert(LinkedList *plist, int addr, int data) {
 	Node *cur = plist->head;
+	Node *newNode = (Node *)malloc(sizeof(Node));
+	newNode->addr = addr;
+	newNode->data = data;
+	newNode->next = NULL;
 
 	while (cur->next != NULL) cur = cur->next;
 
-	cur->next = (Node *) malloc(sizeof(Node));
-	cur->next->addr = addr;
-	cur->next->data = 0;
-	cur->next->next = NULL;
+	cur->next = newNode;
+	plist->len++;
 }
 
 void list_store(LinkedList *plist, int addr, int data) {
@@ -36,10 +40,12 @@ void list_store(LinkedList *plist, int addr, int data) {
 	while (cur->next != NULL) {
 		cur = cur->next;
 		if (cur->addr == addr) {
-			break;
+			cur->data = data;
+			return;
 		}
 	}
-	cur->data = data;
+
+	list_insert(plist, addr, data);
 }
 
 void list_free(LinkedList *plist) {
@@ -66,22 +72,20 @@ int list_load(LinkedList *plist, int addr) {
 	return 0;	
 }
 
-int registers[32];
+int registers[32] = {0,};
 int pc = START_INST_MEMORY; 
 
 void r_format(unsigned int instruction, int opcode);
 void i_format(unsigned int instruction, int opcode, LinkedList *plist);
 void i_shift_format(unsigned int instruction, int funct3);
 void sb_format(unsigned int instruction);
-void u_format(signed int instruction, int opcode);
+void u_format(unsigned int instruction, int opcode);
 void j_format(unsigned int instruction);
 void store_format(unsigned int instruction, LinkedList *plist);
 void print_final_registers();
 
 int main(int argc, char *argv[]) {
 	
-	FILE *fs_inst = NULL;
-	FILE *fs_data = NULL;	
 	LinkedList *plist = NULL;
 
 	unsigned int buffer;
@@ -91,11 +95,10 @@ int main(int argc, char *argv[]) {
 	int executed_instruction_num = 0;
 
 	if (argc == 3) {
-		fs_inst = fopen(argv[1], "rb");
+		FILE *fs_inst = fopen(argv[1], "rb");
 		instruction_number = atoi(argv[2]);
 
 		pc = START_INST_MEMORY;
-
 		while (fread(&buffer, 4, 1, fs_inst) == 1) {
 			opcode = (buffer << 25) >> 25;
 			funct3 = (buffer << 17) >> 29;
@@ -132,21 +135,21 @@ int main(int argc, char *argv[]) {
 		fclose(fs_inst);
 	}
 	else if (argc == 4) {
-		fs_inst = fopen(argv[1], "rb");
-		fs_data = fopen(argv[2], "rb");
+		FILE *fs_inst = fopen(argv[1], "rb");
+		FILE *fs_data = fopen(argv[2], "rb");
 		instruction_number = atoi(argv[3]);
 		
 		pc = START_INST_MEMORY;
-
+		
 		plist = (LinkedList *) malloc(sizeof(LinkedList));
 		list_init(plist);
-
+		int data_memory = START_INST_MEMORY;
 		while (fread(&buffer, 4, 1, fs_data) == 1) {
 			if (buffer == 0xff) break;
-			list_insert(plist, buffer);		
+			list_insert(plist, data_memory, buffer);		
+			data_memory += 4;
 		}
 
-		fs_inst = fopen(argv[1], "rb");
 		while (fread(&buffer, 4, 1, fs_inst) == 1) {
 			opcode = (buffer << 25) >> 25;
 			funct3 = (buffer << 17) >> 29;
@@ -182,8 +185,8 @@ int main(int argc, char *argv[]) {
 		}
 		fclose(fs_inst);
 		fclose(fs_data);
+		list_free(plist);
 	}
-	list_free(plist);
 	print_final_registers();
 	return 0;
 }
@@ -264,6 +267,7 @@ void i_format(unsigned int instruction, int opcode, LinkedList *plist) {
 		else if (funct3 == 5) { // lhu
 			data = (unsigned) (data << 16) >> 16;
 		}
+
 		registers[rd] = data; // lw is not handled
 		pc += 4;
 	}
@@ -369,16 +373,15 @@ void sb_format(unsigned int instruction) {
 }
 
 // complete
-void u_format(signed int instruction, int opcode) {
+void u_format(unsigned int instruction, int opcode) {
 
     int rd = (instruction << 20) >> 27;
-   	int immediate = (instruction >> 12) << 12;
-
+    int immediate = (instruction >> 12) << 12;
     if (opcode == 55)  { // lui
-		registers[rd] = immediate << 12;
-	}
+		registers[rd] = immediate;
+    }
     else if (opcode == 23) { // auipc
-		registers[rd] = pc + (immediate << 12);
+		registers[rd] = pc + immediate;
 	}
 	pc += 4;
 	// if rd is x0, reset the value to 0
