@@ -191,7 +191,6 @@ int main(int argc, char *argv[]) {
 	return 0;
 }
 
-// complete
 void r_format(unsigned int instruction, int opcode) {
 	int rd;
 	int funct3;
@@ -205,16 +204,13 @@ void r_format(unsigned int instruction, int opcode) {
 	rs2 = (instruction << 7) >> 27;
 	funct7 = instruction >> 25;
 	
-	if (opcode == 19) {
-		if (funct3 == 1) registers[rd] = registers[rs1] << registers[rs2];	// slli
-	    else if (funct3 == 5 && funct7 == 0) registers[rd] = ((unsigned) registers[rs1]) >> registers[rs2]; // srli
-		else if (funct3 == 5 && funct7 == 32) registers[rd] = registers[rs1] >> registers[rs2]; // srai
-	}
-	else if (funct7 == 0) {
+	if (funct7 == 0) {
 		if (funct3 == 0) { // add
 			registers[rd] = registers[rs1] + registers[rs2];
 		}
-		else if (funct3 == 1) registers[rd] = registers[rs1] << registers[rs2]; // sll
+		else if (funct3 == 1) {
+			registers[rd] = registers[rs1] << (registers[rs2] & 0x1ff); // sll
+		}
 		else if (funct3 == 2) { // slt
 			if (registers[rs1] < registers[rs2]) registers[rd] = 1;
 			else registers[rd] = 0;
@@ -224,7 +220,7 @@ void r_format(unsigned int instruction, int opcode) {
 			else registers[rd] = 0;
 		}
 		else if (funct3 == 4) registers[rd] = registers[rs1] ^ registers[rs2];	// xor
-		else if (funct3 == 5) registers[rd] = ((unsigned) registers[rs1]) >> registers[rs2]; // srl
+		else if (funct3 == 5) registers[rd] = ((unsigned) registers[rs1]) >> (registers[rs2] & 0x1ff); // srl
 		else if (funct3 == 6) registers[rd] = registers[rs1] | registers[rs2];	// or
 		else if (funct3 == 7) registers[rd] = registers[rs1] & registers[rs2];	//and
 	}
@@ -238,7 +234,6 @@ void r_format(unsigned int instruction, int opcode) {
 	if (rd == 0) registers[rd] = 0;
 }
 
-// complete
 void i_format(unsigned int instruction, int opcode, LinkedList *plist) {
 
 	int rd;
@@ -267,7 +262,6 @@ void i_format(unsigned int instruction, int opcode, LinkedList *plist) {
 		else if (funct3 == 5) { // lhu
 			data = (unsigned) (data << 16) >> 16;
 		}
-
 		registers[rd] = data; // lw is not handled
 		pc += 4;
 	}
@@ -295,15 +289,14 @@ void i_format(unsigned int instruction, int opcode, LinkedList *plist) {
 		pc += 4;
 	}
 	else if (opcode == 103) { // jalr
-		registers[rd] = pc + 4;
-		pc = registers[rs1] + immediate;
+		registers[rd] = pc + 4 - START_INST_MEMORY;
+		pc = registers[rs1] + immediate + START_INST_MEMORY;
 	}	
 
 	// if rd is x0, reset the value to 0
 	if (rd == 0) registers[rd] = 0;
 }
 
-// complete
 void i_shift_format(unsigned int instruction, int funct3) {
 	
 	int rd;
@@ -325,7 +318,6 @@ void i_shift_format(unsigned int instruction, int funct3) {
 	if (rd == 0) registers[rd] = 0;
 }
 
-// complete
 void sb_format(unsigned int instruction) {
 
 	int funct3;
@@ -344,7 +336,7 @@ void sb_format(unsigned int instruction) {
 	int imm10_5 = ((instruction << 1) >> 26) << 5;
 	int imm4_1 = ((instruction << 20) >> 28) << 1;
 	immediate = (imm12 | imm11 | imm10_5 | imm4_1);
-	immediate = (immediate << 19) >> 19;
+	immediate = (signed) (immediate << 19) >> 19;
 
 	if (funct3 == 0) { // beq
 		if (registers[rs1] == registers[rs2]) pc += immediate;
@@ -372,7 +364,6 @@ void sb_format(unsigned int instruction) {
 	}
 }
 
-// complete
 void u_format(unsigned int instruction, int opcode) {
 
     int rd = (instruction << 20) >> 27;
@@ -388,7 +379,6 @@ void u_format(unsigned int instruction, int opcode) {
 	if (rd == 0) registers[rd] = 0;
 }
 
-// complete
 void j_format(unsigned int instruction) {
 	
 	int rd = (instruction << 20) >> 27;
@@ -401,17 +391,16 @@ void j_format(unsigned int instruction) {
 	int imm11 = ((instruction << 11) >> 31) << 11;
 	int imm19_12 = ((instruction << 12) >> 24) << 12;	
 	immediate = imm20 | imm19_12 | imm11 | imm10_1;
-	immediate = (immediate << 11) >> 11;
+	immediate = ((signed) immediate << 11) >> 11;
 
 	// jal
-	registers[rd] = pc + 4;
+	registers[rd] = pc + 4 - START_INST_MEMORY;
 	pc += immediate;
 
 	//if rd is x0, reset the value to 0
 	if (rd == 0) registers[rd] = 0;
 }
 
-// complete
 void store_format(unsigned int instruction, LinkedList *plist) {
 
 	int funct3;
@@ -428,7 +417,7 @@ void store_format(unsigned int instruction, LinkedList *plist) {
 	int imm11_5 = (instruction >> 25) << 5;
 	int imm4_0 = (instruction << 20) >> 27;
 	immediate = (imm11_5 | imm4_0);
-	immediate = (immediate << 20) >> 20;
+	immediate = ((signed) immediate << 20) >> 20;
 
 	if (funct3 == 0) { // sb
 		int data = registers[rs2] & 0x000000ff;
