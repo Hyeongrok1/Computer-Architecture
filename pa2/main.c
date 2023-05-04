@@ -146,7 +146,6 @@ int main(int argc, char *argv[]) {
 			list_insert(plist, data_memory, buffer);		
 			data_memory += 4;
 		}	
-		printf("0\n");
 		while (fread(&buffer, 4, 1, fs_inst) == 1) {
 			opcode = (buffer << 25) >> 25;
 			funct3 = (buffer << 17) >> 29;
@@ -176,19 +175,12 @@ int main(int argc, char *argv[]) {
 			else if (opcode == 35) {
 				store_format(buffer, plist);		
 			}
-			printf("%d\n", (pc)/4);
-			fseek(fs_inst,  pc, SEEK_SET);
+			fseek(fs_inst, pc, SEEK_SET);
 			executed_instruction_num++;
 			if (executed_instruction_num == instruction_number) break;
 		}
 		fclose(fs_inst);
 		fclose(fs_data);
-					Node *cur = plist->head;
-			while (cur->next != NULL) {
-				cur = cur->next;
-				printf("%.8x: %.8x\n", cur->addr, cur->data);
-			}
-			printf("\n");
 		list_free(plist);
 	}
 	print_final_registers();
@@ -292,7 +284,6 @@ void i_format(unsigned int instruction, int opcode, LinkedList *plist) {
 		pc += 4;
 	}
 	else if (opcode == 103) { // jalr
-		printf("%.8x %.8x %d\n", pc, registers[rs1], rs1);
 		registers[rd] = pc + 4;
 		pc = registers[rs1] + immediate;
 	}	
