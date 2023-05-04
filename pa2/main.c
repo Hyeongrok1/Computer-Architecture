@@ -10,7 +10,6 @@ typedef struct _Node {
 
 typedef struct {
 	Node *head;
-	int len;
 } LinkedList;
 
 void list_init(LinkedList *plist) {
@@ -18,7 +17,6 @@ void list_init(LinkedList *plist) {
 	plist->head->addr = 0;
 	plist->head->data = 0;
 	plist->head->next = NULL;
-	plist->len = 0;
 }
 
 void list_insert(LinkedList *plist, int addr, int data) {
@@ -31,7 +29,6 @@ void list_insert(LinkedList *plist, int addr, int data) {
 	while (cur->next != NULL) cur = cur->next;
 
 	cur->next = newNode;
-	plist->len++;
 }
 
 void list_store(LinkedList *plist, int addr, int data) {
@@ -64,7 +61,7 @@ int list_load(LinkedList *plist, int addr) {
 	Node *cur = plist->head;
 	while (cur->next != NULL) {
 		cur = cur->next;
-		if (cur->addr == addr) {
+		if ((unsigned) cur->addr == (unsigned) addr) {
 			return cur->data;
 		}
 	}
@@ -73,7 +70,7 @@ int list_load(LinkedList *plist, int addr) {
 }
 
 int registers[32] = {0,};
-int pc = START_INST_MEMORY; 
+int pc = 0; 
 
 void r_format(unsigned int instruction, int opcode);
 void i_format(unsigned int instruction, int opcode, LinkedList *plist);
@@ -98,7 +95,7 @@ int main(int argc, char *argv[]) {
 		FILE *fs_inst = fopen(argv[1], "rb");
 		instruction_number = atoi(argv[2]);
 
-		pc = START_INST_MEMORY;
+		pc = 0;
 		while (fread(&buffer, 4, 1, fs_inst) == 1) {
 			opcode = (buffer << 25) >> 25;
 			funct3 = (buffer << 17) >> 29;
@@ -128,7 +125,7 @@ int main(int argc, char *argv[]) {
 			else if (opcode == 35) {
 				store_format(buffer, plist);		
 			}
-			fseek(fs_inst,  pc - START_INST_MEMORY, SEEK_SET);
+			fseek(fs_inst,  pc, SEEK_SET);
 			executed_instruction_num++;
 			if (executed_instruction_num == instruction_number) break;
 		}
@@ -139,7 +136,7 @@ int main(int argc, char *argv[]) {
 		FILE *fs_data = fopen(argv[2], "rb");
 		instruction_number = atoi(argv[3]);
 		
-		pc = START_INST_MEMORY;
+		pc = 0;
 		
 		plist = (LinkedList *) malloc(sizeof(LinkedList));
 		list_init(plist);
@@ -148,8 +145,8 @@ int main(int argc, char *argv[]) {
 			if (buffer == 0xff) break;
 			list_insert(plist, data_memory, buffer);		
 			data_memory += 4;
-		}
-
+		}	
+		printf("0\n");
 		while (fread(&buffer, 4, 1, fs_inst) == 1) {
 			opcode = (buffer << 25) >> 25;
 			funct3 = (buffer << 17) >> 29;
@@ -179,12 +176,19 @@ int main(int argc, char *argv[]) {
 			else if (opcode == 35) {
 				store_format(buffer, plist);		
 			}
-			fseek(fs_inst,  pc - START_INST_MEMORY, SEEK_SET);
+			printf("%d\n", (pc)/4);
+			fseek(fs_inst,  pc, SEEK_SET);
 			executed_instruction_num++;
 			if (executed_instruction_num == instruction_number) break;
 		}
 		fclose(fs_inst);
 		fclose(fs_data);
+					Node *cur = plist->head;
+			while (cur->next != NULL) {
+				cur = cur->next;
+				printf("%.8x: %.8x\n", cur->addr, cur->data);
+			}
+			printf("\n");
 		list_free(plist);
 	}
 	print_final_registers();
@@ -209,7 +213,7 @@ void r_format(unsigned int instruction, int opcode) {
 			registers[rd] = registers[rs1] + registers[rs2];
 		}
 		else if (funct3 == 1) {
-			registers[rd] = registers[rs1] << (registers[rs2] & 0x1ff); // sll
+			registers[rd] = registers[rs1] << (registers[rs2] & 0x1f); // sll
 		}
 		else if (funct3 == 2) { // slt
 			if (registers[rs1] < registers[rs2]) registers[rd] = 1;
@@ -220,7 +224,7 @@ void r_format(unsigned int instruction, int opcode) {
 			else registers[rd] = 0;
 		}
 		else if (funct3 == 4) registers[rd] = registers[rs1] ^ registers[rs2];	// xor
-		else if (funct3 == 5) registers[rd] = ((unsigned) registers[rs1]) >> (registers[rs2] & 0x1ff); // srl
+		else if (funct3 == 5) registers[rd] = ((unsigned) registers[rs1]) >> (registers[rs2] & 0x1f); // srl
 		else if (funct3 == 6) registers[rd] = registers[rs1] | registers[rs2];	// or
 		else if (funct3 == 7) registers[rd] = registers[rs1] & registers[rs2];	//and
 	}
@@ -247,7 +251,6 @@ void i_format(unsigned int instruction, int opcode, LinkedList *plist) {
 	funct3 = (instruction << 17) >> 29;
 	rs1 = (instruction << 12) >> 27;
 	immediate = (signed) instruction >> 20;
-	
 	if (opcode == 3) {
 		int data = list_load(plist, registers[rs1] + immediate);
 		if (funct3 == 0) { // lb
@@ -275,7 +278,7 @@ void i_format(unsigned int instruction, int opcode, LinkedList *plist) {
 		}
 		else if (funct3 == 3) { // sltiu
 			if ((unsigned) registers[rs1] < (unsigned) immediate) registers[rd] = 1;
-			else registers[rd] = 0; 	//// check again
+			else registers[rd] = 0; 	
 		}
 		else if (funct3 == 4) { // xori
 			registers[rd] = registers[rs1] ^ immediate;
@@ -289,8 +292,9 @@ void i_format(unsigned int instruction, int opcode, LinkedList *plist) {
 		pc += 4;
 	}
 	else if (opcode == 103) { // jalr
-		registers[rd] = pc + 4 - START_INST_MEMORY;
-		pc = registers[rs1] + immediate + START_INST_MEMORY;
+		printf("%.8x %.8x %d\n", pc, registers[rs1], rs1);
+		registers[rd] = pc + 4;
+		pc = registers[rs1] + immediate;
 	}	
 
 	// if rd is x0, reset the value to 0
@@ -324,8 +328,6 @@ void sb_format(unsigned int instruction) {
 	int rs1;
 	int rs2;
 	int immediate;
-	
-	char *instruction_name = NULL;
 
 	funct3 = (instruction << 17) >> 29;
 	rs1 = (instruction << 12) >> 27;
@@ -384,17 +386,15 @@ void j_format(unsigned int instruction) {
 	int rd = (instruction << 20) >> 27;
 	int immediate;
 
-	char *instruction_name = NULL;
-
 	int imm20 = (instruction >> 31) << 20;
 	int imm10_1 = ((instruction << 1) >> 22) << 1;
 	int imm11 = ((instruction << 11) >> 31) << 11;
 	int imm19_12 = ((instruction << 12) >> 24) << 12;	
 	immediate = imm20 | imm19_12 | imm11 | imm10_1;
-	immediate = ((signed) immediate << 11) >> 11;
+	immediate = (immediate << 11) >> 11;
 
 	// jal
-	registers[rd] = pc + 4 - START_INST_MEMORY;
+	registers[rd] = pc + 4;
 	pc += immediate;
 
 	//if rd is x0, reset the value to 0
@@ -407,8 +407,6 @@ void store_format(unsigned int instruction, LinkedList *plist) {
 	int rs1;
 	int rs2;
 	int immediate;
-	
-	char *instruction_name = NULL;
 
 	funct3 = (instruction << 17) >> 29;
 	rs1 = (instruction << 12) >> 27;
@@ -417,7 +415,7 @@ void store_format(unsigned int instruction, LinkedList *plist) {
 	int imm11_5 = (instruction >> 25) << 5;
 	int imm4_0 = (instruction << 20) >> 27;
 	immediate = (imm11_5 | imm4_0);
-	immediate = ((signed) immediate << 20) >> 20;
+	immediate = (immediate << 20) >> 20;
 
 	if (funct3 == 0) { // sb
 		int data = registers[rs2] & 0x000000ff;
@@ -428,6 +426,7 @@ void store_format(unsigned int instruction, LinkedList *plist) {
 		list_store(plist, registers[rs1] + immediate, data);
 	}
 	else if (funct3 == 2) { // sw
+		// printf("%.8x\n%.8x\n", registers[rs1], immediate);
 		list_store(plist, registers[rs1] + immediate, registers[rs2]);
 	}
 
