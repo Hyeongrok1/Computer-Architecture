@@ -91,6 +91,8 @@ int main(int argc, char *argv[]) {
 	int funct3;
 	int executed_instruction_num = 0;
 
+	plist = (LinkedList *) malloc(sizeof(LinkedList));
+	list_init(plist);
 	if (argc == 3) {
 		FILE *fs_inst = fopen(argv[1], "rb");
 		instruction_number = atoi(argv[2]);
@@ -138,8 +140,6 @@ int main(int argc, char *argv[]) {
 		
 		pc = 0;
 		
-		plist = (LinkedList *) malloc(sizeof(LinkedList));
-		list_init(plist);
 		int data_memory = START_INST_MEMORY;
 		while (fread(&buffer, 4, 1, fs_data) == 1) {
 			if (buffer == 0xff) break;
@@ -181,8 +181,8 @@ int main(int argc, char *argv[]) {
 		}
 		fclose(fs_inst);
 		fclose(fs_data);
-		list_free(plist);
 	}
+	list_free(plist);
 	print_final_registers();
 	return 0;
 }
@@ -257,7 +257,12 @@ void i_format(unsigned int instruction, int opcode, LinkedList *plist) {
 		else if (funct3 == 5) { // lhu
 			data = (unsigned) (data << 16) >> 16;
 		}
-		registers[rd] = data; // lw is not handled
+		else if (funct3 == 2) { // lw
+			if ((registers[rs1] + immediate) == 0x20000000) {
+				scanf("%d", &data);
+			}
+		}
+		registers[rd] = data;
 		pc += 4;
 	}
 	else if (opcode == 19) {
@@ -417,8 +422,8 @@ void store_format(unsigned int instruction, LinkedList *plist) {
 		list_store(plist, registers[rs1] + immediate, data);
 	}
 	else if (funct3 == 2) { // sw
-		// printf("%.8x\n%.8x\n", registers[rs1], immediate);
-		list_store(plist, registers[rs1] + immediate, registers[rs2]);
+		if (registers[rs1] + immediate == 0x20000000) printf("%c", registers[rs2]);
+		else list_store(plist, registers[rs1] + immediate, registers[rs2]);
 	}
 
 	pc += 4;
