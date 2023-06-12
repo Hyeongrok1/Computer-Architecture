@@ -18,9 +18,10 @@ Used Language: C
 #### 10000 lines project
 The goal 1 is to find the best cache configuration for the given applications. <br>
 The goal 2 is to implement LRU algorithm for cache. <br>
-The base program is ***Spike RISC-V Simulater***, and initially the base code uses Random Algorithm as Replacement Policy <br><br>
+The base program is ***Spike RISC-V Simulater***, and initially the base code uses Random Algorithm as Replacement Policy. <br>
+I will not upload the source code. <br><br>
 Used Language: C++
 
 ### Review
 Project 1 and 2 were easy because the translation of RISC-V instruction is not that difficult. <br>
-Project 3 took some time to read, but implement LRU is not that difficult
+Project 3 took some time to read, but implement LRU is not that difficult.
