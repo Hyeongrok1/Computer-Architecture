@@ -23,5 +23,5 @@ I will not upload the source code. <br><br>
 Used Language: C++
 
 ### Review
-Project 1 and 2 were easy because the translation of RISC-V instruction is not that difficult. <br>
-Project 3 took some time to read, but implement LRU is not that difficult.
+Project 1 and 2 were easy because the translation of RISC-V instruction is not difficult. <br>
+Project 3 took some time to read, but to implement LRU is easy.
